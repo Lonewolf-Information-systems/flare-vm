@@ -1,0 +1,98 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+  # Base Box Selection (Targets a generic clean Windows 11 Pro image format)
+  config.vm.box = "gusztavvargadr/windows-11"
+  config.vm.communicator = "winrm"
+  
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = "8192" # Heavy resources required for Windows 11 indexing loops
+    vb.cpus = 4
+    vb.customize ["modifyvm", :id, "--clipboard-mode", "bidirectional"]
+    vb.customize ["modifyvm", :id, "--vram", "256"]
+  end
+
+  config.vm.provider "hyperv" do |hv|
+    hv.cpus = 4
+    hv.memory = "8192"
+    hv.dynamic_memory_allocation = true
+  end
+
+  # =========================================================================
+  # PHASE 1: NUCLEAR DEFENDER REMOVAL & AUTOMATED AUTOLOGON
+  # =========================================================================
+  config.vm.provision "shell", name: "Nuclear Defender Strip & AutoLogon Config", inline: <<-POWERSHELL
+    Write-Output "[+] Downloading open-source Windows Defender Remover binary..."
+    $RemoverUrl = "https://github.com"
+    $RemoverPath = "$env:TEMP\\DefenderRemover.exe"
+    Invoke-WebRequest -Uri $RemoverUrl -OutFile $RemoverPath
+
+    Write-Output "[+] Running complete package extraction to permanently unhook security services..."
+    # The /r flag triggers silent complete extraction of Defender binaries and driver engines
+    Start-Process -FilePath $RemoverPath -ArgumentList "/r" -Wait -NoNewWindow
+    Remove-Item $RemoverPath -Force -ErrorAction SilentlyContinue
+
+    Write-Output "[+] Configuring auto-logon parameters to survive setup reboot strings..."
+    REG ADD "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon" /v AutoAdminLogon /t REG_SZ /d 1 /f
+    REG ADD "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon" /v DefaultUserName /t REG_SZ /d vagrant /f
+    REG ADD "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon" /v DefaultPassword /t REG_SZ /d vagrant /f
+  POWERSHELL
+
+  # Forced restart required to finalize core driver unhooking loops
+  config.vm.provision "shell", inline: "shutdown /r /t 5 /f", run: "once"
+
+  # =========================================================================
+  # PHASE 2: MASSGRAVE HWID ACTIVATION (MAS)
+  # =========================================================================
+  config.vm.provision "shell", name: "Execute HWID Windows 11 Activation", inline: <<-POWERSHELL
+    Write-Output "[+] Instantiating Massgrave (MAS) engine..."
+    $masUrl = "https://githubusercontent.com"
+    $masPath = "$env:TEMP\\MAS_AIO.cmd"
+    
+    Invoke-WebRequest -Uri $masUrl -OutFile $masPath
+    # Using /HWID method as KMS38 is deprecated on updated Windows 11 builds
+    Start-Process -FilePath $masPath -ArgumentList "/HWID" -Wait -NoNewWindow
+    Remove-Item $masPath -Force -ErrorAction SilentlyContinue
+  POWERSHELL
+
+  # =========================================================================
+  # PHASE 3: CORE FLARE VM PIPELINE
+  # =========================================================================
+  config.vm.provision "shell", name: "Deploy Mandiant FLARE VM Framework", inline: <<-POWERSHELL
+    Write-Output "[+] Fetching Mandiant FLARE VM baseline installation manifest..."
+    $flareScript = "$env:USERPROFILE\\Desktop\\install.ps1"
+    Invoke-WebRequest -Uri "https://githubusercontent.com" -OutFile $flareScript
+    
+    Write-Output "[+] Launching automated build matrix via Boxstarter context..."
+    Set-ExecutionPolicy Unrestricted -Force
+    & $flareScript -password vagrant -noWait -noGui
+  POWERSHELL
+
+  # =========================================================================
+  # PHASE 4: INCIDENT RESPONSE FIELD STACK INTEGRATION
+  # =========================================================================
+  config.vm.provision "shell", name: "Install Custom Cleanup & IR Packages", inline: <<-POWERSHELL
+    Write-Output "[+] Injecting specific triage, productivity, and forensic binaries..."
+    
+    # Core active infrastructure tools
+    choco install winget-cli -y --no-progress
+    choco install clamwin -y --no-progress
+    choco install libreoffice-fresh -y --no-progress
+
+    # Elite Forensics and Field Response additions
+    choco install sysinternals -y --no-progress
+    choco install kape -y --no-progress
+    choco install ftk-imager -y --no-progress
+    choco install bulk-extractor -y --no-progress
+    
+    # File reduction routines to keep thin exports for OpenNebula/NAS clusters
+    Write-Output "[+] Purging hidden deployment caches to control disk bloat..."
+    fsutil behavior set disablelastaccess 1
+    choco config set cacheLocation "C:\\TempChocoCache"
+    Remove-Item "C:\\TempChocoCache\\*" -Recurse -Force -ErrorAction SilentlyContinue
+  POWERSHELL
+
+  # Final environment cleanup restart
+  config.vm.provision "shell", inline: "shutdown /r /t 5 /f", run: "once"
+end
